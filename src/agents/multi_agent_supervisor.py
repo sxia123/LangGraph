@@ -1,13 +1,15 @@
 import operator
 import time
-from typing import Annotated, Any, Dict, List, TypedDict
+from typing import Annotated, Any, Dict, List
+
+from typing_extensions import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from src.core.local_llm import LocalLLMClient
 
 
-class MultiAgentState(TypedDict):
+class MultiAgentState(TypedDict, total=False):
     messages: Annotated[List[Dict[str, Any]], operator.add]
     current_task: str
     next_agent: str
@@ -18,11 +20,25 @@ class MultiAgentState(TypedDict):
     agent_thoughts: Annotated[List[Dict[str, Any]], operator.add]
 
 
+def _get_task(state: MultiAgentState) -> str:
+    task = state.get("current_task", "")
+    if not task:
+        messages = state.get("messages") or []
+        if messages:
+            last_msg = messages[-1]
+            if isinstance(last_msg, dict):
+                task = last_msg.get("content", "")
+            elif hasattr(last_msg, "content"):
+                task = getattr(last_msg, "content", "")
+    return task
+
+
 def create_multi_agent_supervisor_graph(llm_client: LocalLLMClient):
     workflow = StateGraph(MultiAgentState)
 
     # 1. SUPERVISOR ROUTER NODE
     def supervisor_node(state: MultiAgentState) -> Dict[str, Any]:
+        task = _get_task(state)
         prompt = f"""You are the Multi-Agent Supervisor Router for a team of AI worker agents:
 - 'researcher': Researches facts, web search, background data.
 - 'coder': Writes code, scripts, or technical functions.
@@ -30,7 +46,7 @@ def create_multi_agent_supervisor_graph(llm_client: LocalLLMClient):
 - 'writer': Synthesizes the final user response when all work is verified.
 - 'FINISH': Stop when the user task is fully answered.
 
-Task: "{state.get("current_task", "")}"
+Task: "{task}"
 State Summary:
 - Research Done: {"Yes" if state.get("research_output") else "No"}
 - Code Generated: {"Yes" if state.get("coder_output") else "No"}
@@ -51,8 +67,8 @@ Respond with ONLY ONE word representing the next agent node: "researcher", "code
         elif "finish" in decision or "writer" in decision:
             target = "writer"
         else:
-            task = state.get("current_task", "").lower()
-            if not state.get("research_output") and ("find" in task or "research" in task):
+            task_lower = task.lower()
+            if not state.get("research_output") and ("find" in task_lower or "research" in task_lower):
                 target = "researcher"
             elif not state.get("coder_output"):
                 target = "coder"
@@ -73,7 +89,8 @@ Respond with ONLY ONE word representing the next agent node: "researcher", "code
 
     # 2. RESEARCHER NODE
     def researcher_node(state: MultiAgentState) -> Dict[str, Any]:
-        prompt = f"""You are the Expert Researcher Agent. Gather findings for: "{state.get("current_task", "")}"."""
+        task = _get_task(state)
+        prompt = f"""You are the Expert Researcher Agent. Gather findings for: "{task}"."""
         res = llm_client.generate_completion(
             prompt, state.get("messages", []), available_tools=["web_search"]
         )
@@ -100,8 +117,9 @@ Respond with ONLY ONE word representing the next agent node: "researcher", "code
 
     # 3. CODER NODE
     def coder_node(state: MultiAgentState) -> Dict[str, Any]:
+        task = _get_task(state)
         prompt = f"""You are the Lead Software Engineer Node.
-Write clean, maintainable code for: "{state.get("current_task", "")}".
+Write clean, maintainable code for: "{task}".
 Research Context: {state.get("research_output", "N/A")}
 Critic Feedback: {state.get("critic_feedback", "None")}"""
 
@@ -153,7 +171,8 @@ Critic Feedback: {state.get("critic_feedback", "None")}"""
 
     # 5. WRITER NODE
     def writer_node(state: MultiAgentState) -> Dict[str, Any]:
-        prompt = f"""You are the Final Synthesizer Agent. Consolidate final answer for: "{state.get("current_task", "")}"."""
+        task = _get_task(state)
+        prompt = f"""You are the Final Synthesizer Agent. Consolidate final answer for: "{task}"."""
         res = llm_client.generate_completion(prompt, state.get("messages", []))
 
         msg = {

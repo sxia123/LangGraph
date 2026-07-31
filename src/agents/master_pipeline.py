@@ -1,16 +1,18 @@
 import operator
 import time
-from typing import Annotated, Any, Dict, List, Optional, TypedDict
+from typing import Annotated, Any, Dict, List, Optional
+
+from typing_extensions import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from src.agents.claims_triage_team import create_claims_triage_graph
-from src.agents.code_review_team import create_code_review_team_graph
-from src.agents.multi_agent_supervisor import create_multi_agent_supervisor_graph
+from src.agents.claims_triage_team import ClaimsTriageState, create_claims_triage_graph
+from src.agents.code_review_team import CodeReviewState, create_code_review_team_graph
+from src.agents.multi_agent_supervisor import MultiAgentState, create_multi_agent_supervisor_graph
 from src.core.local_llm import LocalLLMClient
 
 
-class MasterPipelineState(TypedDict):
+class MasterPipelineState(TypedDict, total=False):
     messages: Annotated[List[Dict[str, Any]], operator.add]
     user_input: str
     current_step: str
@@ -30,9 +32,18 @@ def create_master_pipeline_graph(llm_client: LocalLLMClient):
 
     # 1. CLAIMS TRIAGE STAGE NODE
     def triage_stage_node(state: MasterPipelineState) -> Dict[str, Any]:
-        prompt = state.get("user_input", "")
-        triage_input = {
-            "messages": state.get("messages", []),
+        messages = state.get("messages") or []
+        user_input = state.get("user_input")
+        if not user_input and messages:
+            last_msg = messages[-1]
+            if isinstance(last_msg, dict):
+                user_input = last_msg.get("content", "")
+            elif hasattr(last_msg, "content"):
+                user_input = getattr(last_msg, "content", "")
+        prompt = user_input or "Execute master pipeline for task."
+
+        triage_input: ClaimsTriageState = {
+            "messages": messages,
             "claim_input": prompt,
             "current_step": "step_1_classification",
             "classification_details": None,
@@ -78,7 +89,7 @@ def create_master_pipeline_graph(llm_client: LocalLLMClient):
         triage_info = state.get("triage_details", {})
         task_prompt = f"User Request: {state.get('user_input')}\nTriage Context: {triage_info}"
 
-        supervisor_input = {
+        supervisor_input: MultiAgentState = {
             "messages": state.get("messages", []),
             "current_task": task_prompt,
             "next_agent": "supervisor",
@@ -101,6 +112,13 @@ def create_master_pipeline_graph(llm_client: LocalLLMClient):
             "timestamp": time.strftime("%H:%M:%S"),
         }
 
+        sub_thoughts = supervisor_res.get("agent_thoughts") or []
+        stage_thought = {
+            "agent": "Master Pipeline",
+            "thought": f"Stage 2: Multi-agent supervisor team completed task with {len(sub_thoughts)} thought steps.",
+            "timestamp": time.strftime("%H:%M:%S"),
+        }
+
         return {
             "current_step": "supervisor_complete",
             "supervisor_details": {
@@ -110,13 +128,7 @@ def create_master_pipeline_graph(llm_client: LocalLLMClient):
                 "solution": solution,
             },
             "messages": [msg],
-            "agent_thoughts": [
-                {
-                    "agent": "Master Pipeline",
-                    "thought": "Stage 2: Supervisor team completed task formulation.",
-                    "timestamp": time.strftime("%H:%M:%S"),
-                }
-            ],
+            "agent_thoughts": sub_thoughts + [stage_thought],
         }
 
     # 3. REVIEWER STAGE NODE
@@ -127,7 +139,7 @@ def create_master_pipeline_graph(llm_client: LocalLLMClient):
             or state.get("user_input", "")
         )
 
-        review_input = {
+        review_input: CodeReviewState = {
             "messages": state.get("messages", []),
             "task": state.get("user_input", ""),
             "code": solution_to_review,

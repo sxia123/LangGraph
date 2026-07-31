@@ -1,13 +1,15 @@
 import operator
 import time
-from typing import Annotated, Any, Dict, List, Optional, TypedDict
+from typing import Annotated, Any, Dict, List, Optional
+
+from typing_extensions import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from src.core.local_llm import LocalLLMClient
 
 
-class ClaimsTriageState(TypedDict):
+class ClaimsTriageState(TypedDict, total=False):
     messages: Annotated[List[Dict[str, Any]], operator.add]
     claim_input: str
     current_step: str
@@ -18,15 +20,29 @@ class ClaimsTriageState(TypedDict):
     agent_thoughts: Annotated[List[Dict[str, Any]], operator.add]
 
 
+def _get_claim_input(state: ClaimsTriageState) -> str:
+    claim = state.get("claim_input", "")
+    if not claim:
+        messages = state.get("messages") or []
+        if messages:
+            last_msg = messages[-1]
+            if isinstance(last_msg, dict):
+                claim = last_msg.get("content", "")
+            elif hasattr(last_msg, "content"):
+                claim = getattr(last_msg, "content", "")
+    return claim
+
+
 def create_claims_triage_graph(llm_client: LocalLLMClient):
     workflow = StateGraph(ClaimsTriageState)
 
     def classifier_node(state: ClaimsTriageState) -> Dict[str, Any]:
-        prompt = f"""You are Step 1 Classifier in Claims Triage. Categorize claim: "{state.get("claim_input", "")}"."""
+        claim = _get_claim_input(state)
+        prompt = f"""You are Step 1 Classifier in Claims Triage. Categorize claim: "{claim}"."""
         res = llm_client.generate_completion(prompt, state.get("messages", []))
 
         category = "Product Defect & Safety"
-        claim_lower = state.get("claim_input", "").lower()
+        claim_lower = claim.lower()
         if "billing" in claim_lower or "charge" in claim_lower:
             category = "Billing & Subscription Discrepancy"
         elif any(k in claim_lower for k in ["hack", "unauthorized", "security"]):
@@ -60,10 +76,11 @@ def create_claims_triage_graph(llm_client: LocalLLMClient):
         }
 
     def severity_filter_node(state: ClaimsTriageState) -> Dict[str, Any]:
-        prompt = f"""You are Step 2 Severity Filter. Assess severity for: "{state.get("claim_input", "")}"."""
+        claim = _get_claim_input(state)
+        prompt = f"""You are Step 2 Severity Filter. Assess severity for: "{claim}"."""
         res = llm_client.generate_completion(prompt, state.get("messages", []))
 
-        claim_lower = state.get("claim_input", "").lower()
+        claim_lower = claim.lower()
         level = "MEDIUM"
         sla = "24 Hours"
         if any(k in claim_lower for k in ["fire", "injury", "50k", "$75,000"]):
@@ -100,11 +117,8 @@ def create_claims_triage_graph(llm_client: LocalLLMClient):
         prompt = """You are Step 3 Resolution Handler. Provide resolution for claim."""
         res = llm_client.generate_completion(prompt, state.get("messages", []))
 
-        level = (
-            state.get("severity_assessment", {}).get("level", "MEDIUM")
-            if state.get("severity_assessment")
-            else "MEDIUM"
-        )
+        sev = state.get("severity_assessment") or {}
+        level = sev.get("level", "MEDIUM") if isinstance(sev, dict) else "MEDIUM"
         assigned_team = "Standard Support Team"
         if level == "CRITICAL":
             assigned_team = "Executive Response Team"

@@ -1,19 +1,34 @@
 import operator
 import time
-from typing import Annotated, Any, Dict, List, TypedDict
+from typing import Annotated, Any, Dict, List
+
+from typing_extensions import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from src.core.local_llm import LocalLLMClient
 
 
-class CodeReviewState(TypedDict):
+class CodeReviewState(TypedDict, total=False):
     messages: Annotated[List[Dict[str, Any]], operator.add]
     task: str
     code: str
     review: str
     approved: bool
     revision_count: int
+
+
+def _get_task(state: CodeReviewState) -> str:
+    task = state.get("task", "")
+    if not task:
+        messages = state.get("messages") or []
+        if messages:
+            last_msg = messages[-1]
+            if isinstance(last_msg, dict):
+                task = last_msg.get("content", "")
+            elif hasattr(last_msg, "content"):
+                task = getattr(last_msg, "content", "")
+    return task
 
 
 def create_code_review_team_graph(llm_client: LocalLLMClient):
@@ -24,7 +39,8 @@ def create_code_review_team_graph(llm_client: LocalLLMClient):
         if existing_code and state.get("revision_count", 0) == 0:
             return {"revision_count": 1}
 
-        prompt = f"""You are Lead Software Developer. Task: "{state.get("task", "")}"."""
+        task = _get_task(state)
+        prompt = f"""You are Lead Software Developer. Task: "{task}"."""
         if existing_code:
             prompt += f"\nExisting Code to revise:\n{existing_code}\nReviewer Feedback: {state.get('review', '')}"
 
