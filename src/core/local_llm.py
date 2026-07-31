@@ -23,9 +23,9 @@ class LLMResponse(BaseModel):
 
 
 class LocalLLMConfig(BaseModel):
-    provider: str = "lm-studio"
-    base_url: str = "http://localhost:1234/v1"
-    model_name: str = "qwen2.5-coder-7b-instruct"
+    provider: str = "omlx"
+    base_url: str = "http://localhost:8000/v1"
+    model_name: str = "Qwen-3.6-A3B-6bit"
     api_key: Optional[str] = ""
     temperature: float = 0.2
 
@@ -34,9 +34,9 @@ class LocalLLMClient:
     def __init__(self, config: Optional[LocalLLMConfig] = None):
         if config is None:
             config = LocalLLMConfig(
-                provider=os.getenv("LLM_PROVIDER", "lm-studio"),
-                base_url=os.getenv("OPENAI_BASE_URL", "http://localhost:1234/v1"),
-                model_name=os.getenv("OPENAI_MODEL_NAME", "qwen2.5-coder-7b-instruct"),
+                provider=os.getenv("LLM_PROVIDER", "omlx"),
+                base_url=os.getenv("OPENAI_BASE_URL", "http://localhost:8000/v1"),
+                model_name=os.getenv("OPENAI_MODEL_NAME", "Qwen-3.6-A3B-6bit"),
                 api_key=os.getenv("OPENAI_API_KEY", ""),
             )
         self.config = config
