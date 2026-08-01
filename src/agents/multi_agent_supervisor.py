@@ -2,9 +2,8 @@ import operator
 import time
 from typing import Annotated, Any, Dict, List
 
-from typing_extensions import TypedDict
-
 from langgraph.graph import END, START, StateGraph
+from typing_extensions import TypedDict
 
 from src.core.local_llm import LocalLLMClient
 
@@ -41,15 +40,15 @@ def create_multi_agent_supervisor_graph(llm_client: LocalLLMClient):
         task = _get_task(state)
         prompt = f"""You are the Multi-Agent Supervisor Router for a team of AI worker agents:
 - 'researcher': Researches facts, web search, background data.
-- 'coder': Writes code, scripts, or technical functions.
-- 'critic': Audits code/research output for bugs, security risks, or missing edge cases.
+- 'coder': Generates code, solutions, scripts, or content draft.
+- 'critic': Audits output/research for errors, risks, or missing edge cases.
 - 'writer': Synthesizes the final user response when all work is verified.
 - 'FINISH': Stop when the user task is fully answered.
 
 Task: "{task}"
 State Summary:
 - Research Done: {"Yes" if state.get("research_output") else "No"}
-- Code Generated: {"Yes" if state.get("coder_output") else "No"}
+- Solution/Draft Generated: {"Yes" if state.get("coder_output") else "No"}
 - Critic Approved: {"Yes" if state.get("critic_feedback") else "No"}
 
 Respond with ONLY ONE word representing the next agent node: "researcher", "coder", "critic", "writer", or "FINISH"."""
@@ -90,36 +89,47 @@ Respond with ONLY ONE word representing the next agent node: "researcher", "code
     # 2. RESEARCHER NODE
     def researcher_node(state: MultiAgentState) -> Dict[str, Any]:
         task = _get_task(state)
-        prompt = f"""You are the Expert Researcher Agent. Gather findings for: "{task}"."""
+
+        # 1. Perform live DuckDuckGo Web Search
+        search_context = llm_client.search_web(task, max_results=5)
+
+        # 2. Pass findings to LLM for synthesis
+        prompt = f"""You are the Expert Researcher Agent. Gather and synthesize domain findings for: "{task}".
+
+Live DuckDuckGo Search Context:
+{search_context}"""
+
         res = llm_client.generate_completion(
             prompt, state.get("messages", []), available_tools=["web_search"]
         )
+
+        research_summary = f"{res.content.strip()}\n\n{search_context}"
 
         msg = {
             "id": f"msg_{int(time.time() * 1000)}",
             "sender": "Researcher Agent",
             "role": "assistant",
-            "content": res.content,
+            "content": research_summary,
             "timestamp": time.strftime("%H:%M:%S"),
         }
 
         return {
-            "research_output": res.content,
+            "research_output": research_summary,
             "messages": [msg],
             "agent_thoughts": [
                 {
                     "agent": "Researcher",
-                    "thought": res.thought or "Gathered domain research context.",
+                    "thought": res.thought or f"Executed live DuckDuckGo search for '{task}' and synthesized context.",
                     "timestamp": time.strftime("%H:%M:%S"),
                 }
             ],
         }
 
-    # 3. CODER NODE
+    # 3. CODER NODE (Primary Solution & Content Generator)
     def coder_node(state: MultiAgentState) -> Dict[str, Any]:
         task = _get_task(state)
-        prompt = f"""You are the Lead Software Engineer Node.
-Write clean, maintainable code for: "{task}".
+        prompt = f"""You are the Primary Content & Solution Generator Node.
+Generate a comprehensive, accurate solution or response for: "{task}".
 Research Context: {state.get("research_output", "N/A")}
 Critic Feedback: {state.get("critic_feedback", "None")}"""
 
@@ -138,7 +148,7 @@ Critic Feedback: {state.get("critic_feedback", "None")}"""
             "agent_thoughts": [
                 {
                     "agent": "Coder",
-                    "thought": res.thought or "Generated code solution.",
+                    "thought": res.thought or "Generated solution response.",
                     "timestamp": time.strftime("%H:%M:%S"),
                 }
             ],
@@ -146,7 +156,7 @@ Critic Feedback: {state.get("critic_feedback", "None")}"""
 
     # 4. CRITIC NODE
     def critic_node(state: MultiAgentState) -> Dict[str, Any]:
-        prompt = f"""You are the Senior QA Critic Node. Audit this code:\n{state.get("coder_output", "")}\nProvide verdict (APPROVED or REVISION)."""
+        prompt = f"""You are the Senior Quality & QA Critic Node. Audit this solution/content:\n{state.get("coder_output", "")}\nProvide verdict (APPROVED or REVISION)."""
         res = llm_client.generate_completion(prompt, state.get("messages", []))
 
         msg = {
@@ -163,7 +173,7 @@ Critic Feedback: {state.get("critic_feedback", "None")}"""
             "agent_thoughts": [
                 {
                     "agent": "Critic",
-                    "thought": res.thought or "Audited solution code.",
+                    "thought": res.thought or "Audited solution response.",
                     "timestamp": time.strftime("%H:%M:%S"),
                 }
             ],

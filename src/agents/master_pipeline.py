@@ -2,13 +2,12 @@ import operator
 import time
 from typing import Annotated, Any, Dict, List, Optional
 
+from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
-from langgraph.graph import END, START, StateGraph
-
 from src.agents.claims_triage_team import ClaimsTriageState, create_claims_triage_graph
-from src.agents.code_review_team import CodeReviewState, create_code_review_team_graph
 from src.agents.multi_agent_supervisor import MultiAgentState, create_multi_agent_supervisor_graph
+from src.agents.solution_review_team import SolutionReviewState, create_solution_review_team_graph
 from src.core.local_llm import LocalLLMClient
 
 
@@ -26,7 +25,7 @@ class MasterPipelineState(TypedDict, total=False):
 def create_master_pipeline_graph(llm_client: LocalLLMClient):
     triage_subgraph = create_claims_triage_graph(llm_client)
     supervisor_subgraph = create_multi_agent_supervisor_graph(llm_client)
-    review_subgraph = create_code_review_team_graph(llm_client)
+    review_subgraph = create_solution_review_team_graph(llm_client)
 
     workflow = StateGraph(MasterPipelineState)
 
@@ -123,7 +122,7 @@ def create_master_pipeline_graph(llm_client: LocalLLMClient):
             "current_step": "supervisor_complete",
             "supervisor_details": {
                 "research": supervisor_res.get("research_output"),
-                "code": supervisor_res.get("coder_output"),
+                "draft": supervisor_res.get("coder_output"),
                 "critic": supervisor_res.get("critic_feedback"),
                 "solution": solution,
             },
@@ -139,10 +138,10 @@ def create_master_pipeline_graph(llm_client: LocalLLMClient):
             or state.get("user_input", "")
         )
 
-        review_input: CodeReviewState = {
+        review_input: SolutionReviewState = {
             "messages": state.get("messages", []),
             "task": state.get("user_input", ""),
-            "code": solution_to_review,
+            "solution": solution_to_review,
             "review": "",
             "approved": False,
             "revision_count": 0,
@@ -161,13 +160,13 @@ def create_master_pipeline_graph(llm_client: LocalLLMClient):
             f"### Final Master Pipeline Result\n\n"
             f"**Triage Summary:** {severity_lvl} Severity\n\n"
             f"**Generated Solution:**\n{solution_to_review}\n\n"
-            f"**Code Auditor Review:** {'APPROVED' if is_approved else 'REVISION SUGGESTED'}\n"
+            f"**Quality Auditor Review:** {'APPROVED' if is_approved else 'REVISION SUGGESTED'}\n"
             f"{review_text}"
         )
 
         msg = {
             "id": f"master_rev_{int(time.time() * 1000)}",
-            "sender": "Master Pipeline [Stage 3: Final Review]",
+            "sender": "Master Pipeline [Stage 3: Quality Review]",
             "role": "assistant",
             "content": final_content,
             "timestamp": time.strftime("%H:%M:%S"),

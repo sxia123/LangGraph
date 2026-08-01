@@ -165,7 +165,7 @@ def main():
     print("\nSelect Agent Flow to Execute:")
     print("1) Multi-Agent Supervisor Team (Researcher + Coder + Critic + Writer)")
     print("2) Claims & Severity Triage Pipeline (3-Step Assessment)")
-    print("3) Master Integrated Pipeline (Triage -> Supervisor -> Code Auditor)")
+    print("3) Master Integrated Pipeline (Triage -> Supervisor -> Quality Auditor)")
 
     try:
         choice = input("\nEnter selection [1-3] (default 3): ").strip() or "3"

@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 import requests
 from pydantic import BaseModel
 
+from src.core.web_search import format_search_results, perform_web_search
+
 
 class Message(BaseModel):
     id: str
@@ -40,6 +42,11 @@ class LocalLLMClient:
                 api_key=os.getenv("OPENAI_API_KEY", ""),
             )
         self.config = config
+
+    def search_web(self, query: str, max_results: int = 5) -> str:
+        """Executes DuckDuckGo search and returns formatted markdown results."""
+        results = perform_web_search(query, max_results=max_results)
+        return format_search_results(results)
 
     def update_config(self, **kwargs):
         for k, v in kwargs.items():

@@ -2,9 +2,8 @@ import operator
 import time
 from typing import Annotated, Any, Dict, List, Optional
 
-from typing_extensions import TypedDict
-
 from langgraph.graph import END, START, StateGraph
+from typing_extensions import TypedDict
 
 from src.core.local_llm import LocalLLMClient
 

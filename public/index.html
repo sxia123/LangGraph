@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LangGraph Multi-Agent Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- HEADER NAVBAR -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="url(#paint0_linear)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 17L12 22L22 17" stroke="url(#paint1_linear)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="url(#paint2_linear)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="paint0_linear" x1="2" y1="2" x2="22" y2="12" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00F2FE"/>
+                <stop offset="1" stop-color="#4FACFE"/>
+              </linearGradient>
+              <linearGradient id="paint1_linear" x1="2" y1="17" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#7000FF"/>
+                <stop offset="1" stop-color="#00F2FE"/>
+              </linearGradient>
+              <linearGradient id="paint2_linear" x1="2" y1="12" x2="22" y2="17" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#00F2FE"/>
+                <stop offset="1" stop-color="#7000FF"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>LangGraph Studio</h1>
+          <span class="subtitle">Multi-Agent AI Pipeline Runtime</span>
+        </div>
+      </div>
+
+      <div class="status-pill" id="statusPill">
+        <span class="status-dot pulsing"></span>
+        <span class="status-text" id="statusText">Checking Local LLM connection...</span>
+      </div>
+    </header>
+
+    <!-- PIPELINE SELECTOR TABS -->
+    <nav class="pipeline-selector">
+      <div class="tabs-label">Execution Pipeline:</div>
+      <div class="tabs-container">
+        <button class="tab-btn active" data-pipeline="master">
+          <span class="tab-icon">🌟</span>
+          <span class="tab-title">Master Integrated Pipeline</span>
+          <span class="tab-badge">Triage → Supervisor → Quality Review</span>
+        </button>
+        <button class="tab-btn" data-pipeline="supervisor">
+          <span class="tab-icon">🤖</span>
+          <span class="tab-title">Multi-Agent Supervisor</span>
+          <span class="tab-badge">Research + Generator + Critic</span>
+        </button>
+        <button class="tab-btn" data-pipeline="claims_triage">
+          <span class="tab-icon">📋</span>
+          <span class="tab-title">Claims & Severity Triage</span>
+          <span class="tab-badge">Classifier → Severity → Handler</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- MAIN CHAT AREA -->
+    <main class="chat-viewport">
+      <div class="messages-container" id="messagesContainer">
+        <!-- WELCOME / INTRO MESSAGE -->
+        <div class="system-intro">
+          <div class="intro-card">
+            <h2>Welcome to LangGraph Agent Studio</h2>
+            <p>Send a prompt to trigger autonomous stateful multi-agent workflows running on your local Qwen LLM engine with DuckDuckGo web search integration.</p>
+
+            <div class="quick-prompts-label">Try a Quick Prompt:</div>
+            <div class="quick-prompts">
+              <button class="prompt-chip" data-prompt="Draft a formal resolution for a customer claim regarding a billing error of $750.">
+                💳 Customer Billing Claim
+              </button>
+              <button class="prompt-chip" data-prompt="Search the web for the latest developments in AI agents and synthesize a summary.">
+                🌐 Live Web Research
+              </button>
+              <button class="prompt-chip" data-prompt="Write a Python script to validate email format and test it against edge cases.">
+                🐍 Python Code & QA Review
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- CHAT INPUT COMPONENT -->
+    <footer class="chat-input-wrapper">
+      <form id="chatForm" class="chat-form">
+        <textarea
+          id="userInput"
+          class="chat-input"
+          placeholder="Type your message or task for the LangGraph agent pipeline..."
+          rows="1"
+          required
+        ></textarea>
+        <button type="submit" id="sendBtn" class="send-btn">
+          <span>Send</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </form>
+    </footer>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
