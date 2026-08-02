@@ -43,7 +43,7 @@ def create_code_review_team_graph(llm_client: LocalLLMClient):
         if existing_code:
             prompt += f"\nExisting Code to revise:\n{existing_code}\nReviewer Feedback: {state.get('review', '')}"
 
-        res = llm_client.generate_completion(prompt, state.get("messages", []))
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=1024)
 
         msg = {
             "id": f"dev_{int(time.time() * 1000)}",
@@ -61,7 +61,7 @@ def create_code_review_team_graph(llm_client: LocalLLMClient):
 
     def reviewer_node(state: CodeReviewState) -> Dict[str, Any]:
         prompt = f"""You are Code Auditor. Review code:\n{state.get("code", "")}\nOutput APPROVED if valid."""
-        res = llm_client.generate_completion(prompt, state.get("messages", []))
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=256)
         is_approved = "APPROVED" in res.content.upper()
 
         msg = {

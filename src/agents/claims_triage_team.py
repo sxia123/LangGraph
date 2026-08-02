@@ -38,7 +38,7 @@ def create_claims_triage_graph(llm_client: LocalLLMClient):
     def classifier_node(state: ClaimsTriageState) -> Dict[str, Any]:
         claim = _get_claim_input(state)
         prompt = f"""You are Step 1 Classifier in Claims Triage. Categorize claim: "{claim}"."""
-        res = llm_client.generate_completion(prompt, state.get("messages", []))
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=256)
 
         category = "Product Defect & Safety"
         claim_lower = claim.lower()
@@ -77,7 +77,7 @@ def create_claims_triage_graph(llm_client: LocalLLMClient):
     def severity_filter_node(state: ClaimsTriageState) -> Dict[str, Any]:
         claim = _get_claim_input(state)
         prompt = f"""You are Step 2 Severity Filter. Assess severity for: "{claim}"."""
-        res = llm_client.generate_completion(prompt, state.get("messages", []))
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=256)
 
         claim_lower = claim.lower()
         level = "MEDIUM"
@@ -114,7 +114,7 @@ def create_claims_triage_graph(llm_client: LocalLLMClient):
 
     def resolution_handler_node(state: ClaimsTriageState) -> Dict[str, Any]:
         prompt = """You are Step 3 Resolution Handler. Provide resolution for claim."""
-        res = llm_client.generate_completion(prompt, state.get("messages", []))
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=512)
 
         sev = state.get("severity_assessment") or {}
         level = sev.get("level", "MEDIUM") if isinstance(sev, dict) else "MEDIUM"

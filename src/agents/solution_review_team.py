@@ -43,7 +43,7 @@ def create_solution_review_team_graph(llm_client: LocalLLMClient):
         if existing_solution:
             prompt += f"\nExisting Solution to revise:\n{existing_solution}\nReviewer Feedback: {state.get('review', '')}"
 
-        res = llm_client.generate_completion(prompt, state.get("messages", []))
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=1024)
 
         msg = {
             "id": f"spec_{int(time.time() * 1000)}",
@@ -61,7 +61,7 @@ def create_solution_review_team_graph(llm_client: LocalLLMClient):
 
     def reviewer_node(state: SolutionReviewState) -> Dict[str, Any]:
         prompt = f"""You are Quality Auditor. Review solution:\n{state.get("solution", "")}\nOutput APPROVED if valid."""
-        res = llm_client.generate_completion(prompt, state.get("messages", []))
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=256)
         is_approved = "APPROVED" in res.content.upper()
 
         msg = {

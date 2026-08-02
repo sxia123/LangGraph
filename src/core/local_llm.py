@@ -5,7 +5,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 import requests
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.core.web_search import format_search_results, perform_web_search
 
@@ -25,22 +25,24 @@ class LLMResponse(BaseModel):
 
 
 class LocalLLMConfig(BaseModel):
-    provider: str = "omlx"
-    base_url: str = "http://localhost:8000/v1"
-    model_name: str = "Qwen-3.6-A3B-6bit"
-    api_key: Optional[str] = ""
+    provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "omlx"))
+    base_url: str = Field(
+        default_factory=lambda: os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8000/v1")
+    )
+    model_name: str = Field(
+        default_factory=lambda: os.getenv("OPENAI_MODEL_NAME", "Qwen-3.6-A3B-6bit")
+    )
+    api_key: Optional[str] = Field(
+        default_factory=lambda: os.getenv("OPENAI_API_KEY", "")
+    )
     temperature: float = 0.2
+    max_tokens: int = 1024
 
 
 class LocalLLMClient:
     def __init__(self, config: Optional[LocalLLMConfig] = None):
         if config is None:
-            config = LocalLLMConfig(
-                provider=os.getenv("LLM_PROVIDER", "omlx"),
-                base_url=os.getenv("OPENAI_BASE_URL", "http://localhost:8000/v1"),
-                model_name=os.getenv("OPENAI_MODEL_NAME", "Qwen-3.6-A3B-6bit"),
-                api_key=os.getenv("OPENAI_API_KEY", ""),
-            )
+            config = LocalLLMConfig()
         self.config = config
 
     def search_web(self, query: str, max_results: int = 5) -> str:
@@ -106,26 +108,39 @@ class LocalLLMClient:
         system_prompt: str,
         messages: List[Dict[str, Any]],
         available_tools: Optional[List[str]] = None,
+        max_tokens: Optional[int] = None,
     ) -> LLMResponse:
         if self.config.provider == "mock":
             return self._generate_mock_response(system_prompt, messages, available_tools)
 
         try:
             if self.config.provider == "ollama":
-                return self._call_ollama_api(system_prompt, messages)
+                return self._call_ollama_api(system_prompt, messages, max_tokens=max_tokens)
             else:
-                return self._call_openai_compatible_api(system_prompt, messages)
+                return self._call_openai_compatible_api(
+                    system_prompt, messages, max_tokens=max_tokens
+                )
         except Exception as err:
             mock_res = self._generate_mock_response(system_prompt, messages, available_tools)
             mock_res.content = f"[Notice: Local LLM fallback ({str(err)}). Showing simulated response]\n\n{mock_res.content}"
             return mock_res
 
-    def _call_ollama_api(self, system_prompt: str, messages: List[Dict[str, Any]]) -> LLMResponse:
+    def _call_ollama_api(
+        self,
+        system_prompt: str,
+        messages: List[Dict[str, Any]],
+        max_tokens: Optional[int] = None,
+    ) -> LLMResponse:
         formatted = [{"role": "system", "content": system_prompt}]
         for m in messages:
             formatted.append({"role": m.get("role", "user"), "content": m.get("content", "")})
 
         base = self.config.base_url.rstrip("/")
+        opts = {"temperature": self.config.temperature}
+        num_tokens = max_tokens or self.config.max_tokens
+        if num_tokens:
+            opts["num_predict"] = num_tokens
+
         res = requests.post(
             f"{base}/api/chat",
             headers=self._get_headers(),
@@ -133,7 +148,7 @@ class LocalLLMClient:
                 "model": self.config.model_name,
                 "messages": formatted,
                 "stream": False,
-                "options": {"temperature": self.config.temperature},
+                "options": opts,
             },
             timeout=30,
         )
@@ -142,21 +157,29 @@ class LocalLLMClient:
         return self._parse_response(raw)
 
     def _call_openai_compatible_api(
-        self, system_prompt: str, messages: List[Dict[str, Any]]
+        self,
+        system_prompt: str,
+        messages: List[Dict[str, Any]],
+        max_tokens: Optional[int] = None,
     ) -> LLMResponse:
         formatted = [{"role": "system", "content": system_prompt}]
         for m in messages:
             formatted.append({"role": m.get("role", "user"), "content": m.get("content", "")})
 
         url = self._get_openai_url("chat/completions")
+        payload: Dict[str, Any] = {
+            "model": self.config.model_name,
+            "messages": formatted,
+            "temperature": self.config.temperature,
+        }
+        num_tokens = max_tokens or self.config.max_tokens
+        if num_tokens:
+            payload["max_tokens"] = num_tokens
+
         res = requests.post(
             url,
             headers=self._get_headers(),
-            json={
-                "model": self.config.model_name,
-                "messages": formatted,
-                "temperature": self.config.temperature,
-            },
+            json=payload,
             timeout=30,
         )
         res.raise_for_status()
