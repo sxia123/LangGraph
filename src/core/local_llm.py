@@ -36,7 +36,7 @@ class LocalLLMConfig(BaseModel):
         default_factory=lambda: os.getenv("OPENAI_API_KEY", "oMLXAPIKEY")
     )
     temperature: float = 0.2
-    max_tokens: int = 1024
+    max_tokens: int = 2048
 
 
 class LocalLLMClient:

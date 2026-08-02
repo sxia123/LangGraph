@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
 from src.core.local_llm import LocalLLMClient
+from src.core.soul_loader import load_soul
 
 
 class ChartPipelineState(TypedDict, total=False):
@@ -58,6 +59,7 @@ def create_chart_pipeline_graph(llm_client: LocalLLMClient):
     def intake_node(state: ChartPipelineState) -> Dict[str, Any]:
         task = _get_input(state)
         task_lower = task.lower()
+        soul_prompt = load_soul("intake", fallback_prompt="You are the Intake Gatekeeper & Scope Classifier.")
 
         # Classify scope and clearance
         blocked_keywords = ["malicious", "unauthorized", "drop database", "exploit"]
@@ -85,7 +87,7 @@ def create_chart_pipeline_graph(llm_client: LocalLLMClient):
             "agent_thoughts": [
                 {
                     "agent": "Intake Node",
-                    "thought": f"Assessed request scope: [{scope}] -> Status [{status}].",
+                    "thought": f"Assessed request scope with soul [{soul_prompt[:30]}...]: [{scope}] -> Status [{status}].",
                     "timestamp": time.strftime("%H:%M:%S"),
                 }
             ],
@@ -105,11 +107,25 @@ def create_chart_pipeline_graph(llm_client: LocalLLMClient):
     # 2. SPECIALIST NODE (Local AI)
     def specialist_node(state: ChartPipelineState) -> Dict[str, Any]:
         task = _get_input(state)
-        prompt = f"""You are the Specialist Agent powered by Local AI.
-Gather requirements, execute local context assembly, and draft solution for: "{task}".
-Be concise and structured. Do not output internal thinking or <think> tags."""
 
-        res = llm_client.generate_completion(prompt, messages=[], max_tokens=512)
+        # Budgeted Web Search: execute web search with strict cap of 2 results
+        search_context = ""
+        try:
+            raw_search = llm_client.search_web(task, max_results=2)
+            search_context = raw_search[:1500] if len(raw_search) > 1500 else raw_search
+        except Exception:
+            search_context = "Web search skipped or unavailable."
+
+        soul_prompt = load_soul("specialist", fallback_prompt="You are the Lead Specialist Agent.")
+        prompt = f"""{soul_prompt}
+
+Task: "{task}"
+Web Search Context (Budgeted - Max 2 Snippets):
+{search_context}"""
+
+        res = llm_client.generate_completion(
+            prompt, messages=[], available_tools=["web_search"], max_tokens=1024
+        )
         msg = {
             "id": f"msg_spec_{int(time.time() * 1000)}",
             "sender": "Specialist Agent (Local AI)",
@@ -125,7 +141,7 @@ Be concise and structured. Do not output internal thinking or <think> tags."""
             "agent_thoughts": [
                 {
                     "agent": "Specialist Agent",
-                    "thought": res.thought or "Gathered context and committed local solution draft.",
+                    "thought": res.thought or "Gathered context (with budgeted web search) and committed local solution draft.",
                     "timestamp": time.strftime("%H:%M:%S"),
                 }
             ],
@@ -134,6 +150,7 @@ Be concise and structured. Do not output internal thinking or <think> tags."""
     # 3. TIER 0 CHECKS NODE
     def tier0_checks_node(state: ChartPipelineState) -> Dict[str, Any]:
         output = state.get("specialist_output", "")
+        soul_prompt = load_soul("tier0_auditor", fallback_prompt="You are the Tier 0 Automated Auditor.")
         # Evaluate 4 criteria: observed, completed, tested, docs
         checks = {
             "observed": len(output) > 20,
@@ -157,7 +174,7 @@ Be concise and structured. Do not output internal thinking or <think> tags."""
             "agent_thoughts": [
                 {
                     "agent": "Tier 0 Auditor",
-                    "thought": f"Tier 0 checks evaluated: All Passed = {all_passed}.",
+                    "thought": f"Tier 0 checks evaluated with auditor persona [{soul_prompt[:25]}...]: All Passed = {all_passed}.",
                     "timestamp": time.strftime("%H:%M:%S"),
                 }
             ],
@@ -165,8 +182,11 @@ Be concise and structured. Do not output internal thinking or <think> tags."""
 
     # 4. TIER 1 VERIFY NODE
     def tier1_verify_node(state: ChartPipelineState) -> Dict[str, Any]:
-        prompt = f"""You are Tier 1 Verification Auditor. Audit this output:\n{state.get("specialist_output", "")}\nOutput VERIFIED if valid, else REVISE with a brief 1-line reason. Do not output <think> tags."""
-        res = llm_client.generate_completion(prompt, messages=[], max_tokens=128)
+        soul_prompt = load_soul("tier1_verifier", fallback_prompt="You are the Tier 1 Verification Auditor.")
+        prompt = f"""{soul_prompt}
+
+Output to Audit:\n{state.get("specialist_output", "")}"""
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=256)
         is_verified = "VERIFIED" in res.content.upper() or "APPROVED" in res.content.upper()
         t0 = state.get("tier0_checks", {})
         converged = is_verified and all(t0.values()) if t0 else is_verified
@@ -195,11 +215,13 @@ Be concise and structured. Do not output internal thinking or <think> tags."""
     # 5. ESCALATION NODE (Frontier Model)
     def escalation_node(state: ChartPipelineState) -> Dict[str, Any]:
         task = _get_input(state)
-        prompt = f"""You are the Frontier Model Escalation Node.
-Solve and repair complex edge cases for: "{task}".
-Previous Specialist Draft: {state.get("specialist_output", "N/A")}. Be concise."""
+        soul_prompt = load_soul("frontier_escalation", fallback_prompt="You are the Frontier Model Escalation Specialist.")
+        prompt = f"""{soul_prompt}
 
-        res = llm_client.generate_completion(prompt, messages=[], max_tokens=512)
+Task: "{task}"
+Previous Specialist Draft: {state.get("specialist_output", "N/A")}"""
+
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=1024)
         msg = {
             "id": f"msg_esc_{int(time.time() * 1000)}",
             "sender": "Escalation Node (Frontier Model)",
@@ -223,9 +245,12 @@ Previous Specialist Draft: {state.get("specialist_output", "N/A")}. Be concise."
     # 6. ADJUDICATE & REPAIR NODE
     def adjudicate_repair_node(state: ChartPipelineState) -> Dict[str, Any]:
         esc = state.get("escalation_notes") or state.get("specialist_output", "")
-        prompt = f"""You are the Adjudication & Repair Node. Apply final concise repairs to solution:\n{esc}"""
+        soul_prompt = load_soul("adjudicator_repair", fallback_prompt="You are the Adjudication & Repair Specialist.")
+        prompt = f"""{soul_prompt}
 
-        res = llm_client.generate_completion(prompt, messages=[], max_tokens=512)
+Draft Solution to Repair:\n{esc}"""
+
+        res = llm_client.generate_completion(prompt, messages=[], max_tokens=1024)
         msg = {
             "id": f"msg_adj_{int(time.time() * 1000)}",
             "sender": "Adjudicate & Repair Node",

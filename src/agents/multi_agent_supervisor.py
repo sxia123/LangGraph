@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
 from src.core.local_llm import LocalLLMClient
+from src.core.soul_loader import load_soul
 
 
 class MultiAgentState(TypedDict, total=False):
@@ -38,20 +39,14 @@ def create_multi_agent_supervisor_graph(llm_client: LocalLLMClient):
     # 1. SUPERVISOR ROUTER NODE
     def supervisor_node(state: MultiAgentState) -> Dict[str, Any]:
         task = _get_task(state)
-        prompt = f"""You are the Multi-Agent Supervisor Router for a team of AI worker agents:
-- 'researcher': Researches facts, web search, background data.
-- 'coder': Generates code, solutions, scripts, or content draft.
-- 'critic': Audits output/research for errors, risks, or missing edge cases.
-- 'writer': Synthesizes the final user response when all work is verified.
-- 'FINISH': Stop when the user task is fully answered.
+        soul_prompt = load_soul("supervisor")
+        prompt = f"""{soul_prompt}
 
 Task: "{task}"
 State Summary:
 - Research Done: {"Yes" if state.get("research_output") else "No"}
 - Solution/Draft Generated: {"Yes" if state.get("coder_output") else "No"}
-- Critic Approved: {"Yes" if state.get("critic_feedback") else "No"}
-
-Respond with ONLY ONE word representing the next agent node: "researcher", "coder", "critic", "writer", or "FINISH". Do not include any thinking or extra text."""
+- Critic Approved: {"Yes" if state.get("critic_feedback") else "No"}"""
 
         res = llm_client.generate_completion(prompt, messages=[], max_tokens=15)
         decision = res.content.strip().lower()
@@ -94,12 +89,12 @@ Respond with ONLY ONE word representing the next agent node: "researcher", "code
         search_context = llm_client.search_web(task, max_results=5)
 
         # 2. Pass findings to LLM for synthesis
-        prompt = f"""You are the Expert Researcher Agent. Gather and synthesize domain findings concisely for: "{task}".
+        soul_prompt = load_soul("researcher")
+        prompt = f"""{soul_prompt}
 
+Task: "{task}"
 Live DuckDuckGo Search Context:
-{search_context}
-
-Be concise and provide bullet points. Avoid verbose explanations."""
+{search_context}"""
 
         res = llm_client.generate_completion(
             prompt, messages=[], available_tools=["web_search"], max_tokens=512
@@ -130,8 +125,10 @@ Be concise and provide bullet points. Avoid verbose explanations."""
     # 3. CODER NODE (Primary Solution & Content Generator)
     def coder_node(state: MultiAgentState) -> Dict[str, Any]:
         task = _get_task(state)
-        prompt = f"""You are the Primary Content & Solution Generator Node.
-Generate a solution for: "{task}".
+        soul_prompt = load_soul("coder")
+        prompt = f"""{soul_prompt}
+
+Task: "{task}"
 Research Context: {state.get("research_output", "N/A")}
 Critic Feedback: {state.get("critic_feedback", "None")}"""
 
@@ -158,7 +155,10 @@ Critic Feedback: {state.get("critic_feedback", "None")}"""
 
     # 4. CRITIC NODE
     def critic_node(state: MultiAgentState) -> Dict[str, Any]:
-        prompt = f"""You are the Senior Quality & QA Critic Node. Audit this solution/content:\n{state.get("coder_output", "")}\nProvide a concise verdict (APPROVED or REVISION) and brief audit notes."""
+        soul_prompt = load_soul("critic")
+        prompt = f"""{soul_prompt}
+
+Content to Audit:\n{state.get("coder_output", "")}"""
         res = llm_client.generate_completion(prompt, messages=[], max_tokens=256)
 
         msg = {
@@ -184,7 +184,10 @@ Critic Feedback: {state.get("critic_feedback", "None")}"""
     # 5. WRITER NODE
     def writer_node(state: MultiAgentState) -> Dict[str, Any]:
         task = _get_task(state)
-        prompt = f"""You are the Final Synthesizer Agent. Consolidate final answer for: "{task}".
+        soul_prompt = load_soul("writer")
+        prompt = f"""{soul_prompt}
+
+Task: "{task}"
 Draft Solution: {state.get("coder_output", "N/A")}"""
         res = llm_client.generate_completion(prompt, messages=[], max_tokens=1024)
 

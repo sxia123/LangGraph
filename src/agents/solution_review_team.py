@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
 from src.core.local_llm import LocalLLMClient
+from src.core.soul_loader import load_soul
 
 
 class SolutionReviewState(TypedDict, total=False):
@@ -39,7 +40,8 @@ def create_solution_review_team_graph(llm_client: LocalLLMClient):
             return {"revision_count": 1}
 
         task = _get_task(state)
-        prompt = f"""You are Lead Solution Specialist. Task: "{task}"."""
+        soul = load_soul("specialist", fallback_prompt="You are Lead Solution Specialist.")
+        prompt = f"""{soul}\nTask: "{task}"."""
         if existing_solution:
             prompt += f"\nExisting Solution to revise:\n{existing_solution}\nReviewer Feedback: {state.get('review', '')}"
 
@@ -60,7 +62,8 @@ def create_solution_review_team_graph(llm_client: LocalLLMClient):
         }
 
     def reviewer_node(state: SolutionReviewState) -> Dict[str, Any]:
-        prompt = f"""You are Quality Auditor. Review solution:\n{state.get("solution", "")}\nOutput APPROVED if valid."""
+        soul = load_soul("tier0_auditor", fallback_prompt="You are Quality Auditor.")
+        prompt = f"""{soul}\nReview solution:\n{state.get("solution", "")}\nOutput APPROVED if valid."""
         res = llm_client.generate_completion(prompt, messages=[], max_tokens=256)
         is_approved = "APPROVED" in res.content.upper()
 
