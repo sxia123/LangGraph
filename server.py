@@ -7,9 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from src.agents.claims_triage_team import create_claims_triage_graph
-from src.agents.master_pipeline import create_master_pipeline_graph
-from src.agents.multi_agent_supervisor import create_multi_agent_supervisor_graph
+from src.agents import (
+    create_chart_pipeline_graph,
+    create_claims_triage_graph,
+    create_code_review_team_graph,
+    create_master_pipeline_graph,
+    create_multi_agent_supervisor_graph,
+    create_solution_review_team_graph,
+)
 from src.core.local_llm import LocalLLMClient
 
 app = FastAPI(title="LangGraph Web API Server", version="1.0.0")
@@ -27,7 +32,7 @@ llm_client = LocalLLMClient()
 
 class ChatRequest(BaseModel):
     prompt: str
-    pipeline: Optional[str] = "master"  # "master", "supervisor", "claims_triage"
+    pipeline: Optional[str] = "master"  # "master", "chart", "supervisor", "claims_triage", "code_review", "solution_review"
 
 
 @app.get("/api/status")
@@ -56,7 +61,59 @@ def handle_chat(req: ChatRequest):
     steps_data = []
 
     try:
-        if pipeline_choice == "supervisor":
+        if pipeline_choice in ["chart", "chart_pipeline"]:
+            graph = create_chart_pipeline_graph(llm_client)
+            initial_input = {
+                "messages": [
+                    {
+                        "id": user_msg_id,
+                        "sender": "User",
+                        "role": "user",
+                        "content": prompt,
+                        "timestamp": timestamp,
+                    }
+                ],
+                "user_input": prompt,
+                "current_step": "intake",
+                "agent_thoughts": [],
+            }
+        elif pipeline_choice in ["code_review", "code"]:
+            graph = create_code_review_team_graph(llm_client)
+            initial_input = {
+                "messages": [
+                    {
+                        "id": user_msg_id,
+                        "sender": "User",
+                        "role": "user",
+                        "content": prompt,
+                        "timestamp": timestamp,
+                    }
+                ],
+                "task": prompt,
+                "code": "",
+                "review": "",
+                "approved": False,
+                "revision_count": 0,
+            }
+        elif pipeline_choice in ["solution_review", "solution"]:
+            graph = create_solution_review_team_graph(llm_client)
+            initial_input = {
+                "messages": [
+                    {
+                        "id": user_msg_id,
+                        "sender": "User",
+                        "role": "user",
+                        "content": prompt,
+                        "timestamp": timestamp,
+                    }
+                ],
+                "task": prompt,
+                "solution": "",
+                "review": "",
+                "approved": False,
+                "revision_count": 0,
+            }
+        elif pipeline_choice == "supervisor":
             graph = create_multi_agent_supervisor_graph(llm_client)
             initial_input = {
                 "messages": [
@@ -169,4 +226,5 @@ if os.path.exists(public_dir):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    # Web UI server runs on port 8080 to avoid port conflict with oMLX server on port 8000
+    uvicorn.run("server:app", host="0.0.0.0", port=8080, reload=True)

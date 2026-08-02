@@ -1,9 +1,14 @@
 import sys
 import time
 
-from src.agents.claims_triage_team import create_claims_triage_graph
-from src.agents.master_pipeline import create_master_pipeline_graph
-from src.agents.multi_agent_supervisor import create_multi_agent_supervisor_graph
+from src.agents import (
+    create_chart_pipeline_graph,
+    create_claims_triage_graph,
+    create_code_review_team_graph,
+    create_master_pipeline_graph,
+    create_multi_agent_supervisor_graph,
+    create_solution_review_team_graph,
+)
 from src.core.local_llm import LocalLLMClient
 
 llm_client = LocalLLMClient()
@@ -110,6 +115,135 @@ def run_claims_triage_demo(prompt: str):
     print("======================================================\n")
 
 
+def run_chart_pipeline_demo(prompt: str):
+    print(f"\n🚀 Launching Flowchart Architecture Pipeline for Prompt:\n'{prompt}'\n")
+    graph = create_chart_pipeline_graph(llm_client)
+
+    initial_input = {
+        "messages": [
+            {
+                "id": f"user_{int(time.time() * 1000)}",
+                "sender": "User",
+                "role": "user",
+                "content": prompt,
+                "timestamp": time.strftime("%H:%M:%S"),
+            }
+        ],
+        "user_input": prompt,
+        "current_step": "intake",
+        "agent_thoughts": [],
+    }
+
+    step = 1
+    for chunk in graph.stream(initial_input):
+        for node_name, node_update in chunk.items():
+            print("\n------------------------------------------------------")
+            print(f"📍 Step {step}: Node [{node_name.upper()}] Complete")
+            print("------------------------------------------------------")
+
+            thoughts = node_update.get("agent_thoughts", [])
+            if thoughts:
+                last_thought = thoughts[-1]
+                print(f"🧠 Thought [{last_thought.get('agent')}]: {last_thought.get('thought')}")
+
+            messages = node_update.get("messages", [])
+            if messages:
+                last_msg = messages[-1]
+                print(
+                    f"💬 Output ({last_msg.get('sender')}):\n{last_msg.get('content', '').strip()}"
+                )
+
+            step += 1
+
+    print("\n======================================================")
+    print("✅ Flowchart Architecture Pipeline Complete!")
+    print("======================================================\n")
+
+
+def run_code_review_demo(prompt: str):
+    print(f"\n🚀 Launching Code Review Team Pipeline for Task:\n'{prompt}'\n")
+    graph = create_code_review_team_graph(llm_client)
+
+    initial_input = {
+        "messages": [
+            {
+                "id": f"user_{int(time.time() * 1000)}",
+                "sender": "User",
+                "role": "user",
+                "content": prompt,
+                "timestamp": time.strftime("%H:%M:%S"),
+            }
+        ],
+        "task": prompt,
+        "code": "",
+        "review": "",
+        "approved": False,
+        "revision_count": 0,
+    }
+
+    step = 1
+    for chunk in graph.stream(initial_input):
+        for node_name, node_update in chunk.items():
+            print("\n------------------------------------------------------")
+            print(f"📍 Step {step}: Node [{node_name.upper()}] Complete")
+            print("------------------------------------------------------")
+
+            messages = node_update.get("messages", [])
+            if messages:
+                last_msg = messages[-1]
+                print(
+                    f"💬 Output ({last_msg.get('sender')}):\n{last_msg.get('content', '').strip()}"
+                )
+
+            step += 1
+
+    print("\n======================================================")
+    print("✅ Code Review Team Pipeline Complete!")
+    print("======================================================\n")
+
+
+def run_solution_review_demo(prompt: str):
+    print(f"\n🚀 Launching Solution Review Team Pipeline for Task:\n'{prompt}'\n")
+    graph = create_solution_review_team_graph(llm_client)
+
+    initial_input = {
+        "messages": [
+            {
+                "id": f"user_{int(time.time() * 1000)}",
+                "sender": "User",
+                "role": "user",
+                "content": prompt,
+                "timestamp": time.strftime("%H:%M:%S"),
+            }
+        ],
+        "task": prompt,
+        "solution": "",
+        "review": "",
+        "approved": False,
+        "revision_count": 0,
+    }
+
+    step = 1
+    for chunk in graph.stream(initial_input):
+        for node_name, node_update in chunk.items():
+            print("\n------------------------------------------------------")
+            print(f"📍 Step {step}: Node [{node_name.upper()}] Complete")
+            print("------------------------------------------------------")
+
+            messages = node_update.get("messages", [])
+            if messages:
+                last_msg = messages[-1]
+                print(
+                    f"💬 Output ({last_msg.get('sender')}):\n{last_msg.get('content', '').strip()}"
+                )
+
+            step += 1
+
+    print("\n======================================================")
+    print("✅ Solution Review Team Pipeline Complete!")
+    print("======================================================\n")
+
+
 def run_master_pipeline_demo(prompt: str):
     print(f"\n🚀 Launching Master Integrated Pipeline for Prompt:\n'{prompt}'\n")
     graph = create_master_pipeline_graph(llm_client)
@@ -160,15 +294,19 @@ def main():
         print(f"✅ {test_res.get('message')}")
     else:
         print(f"⚠️ {test_res.get('message')}")
-        print("   (Falling back to local simulation mode if requests fail)\n")
+        print(f"   (Endpoint Target: {llm_client.config.base_url})")
+        print("   (Ensure oMLX server is running on port 8000. Falling back to simulation if needed)\n")
 
     print("\nSelect Agent Flow to Execute:")
     print("1) Multi-Agent Supervisor Team (Researcher + Coder + Critic + Writer)")
     print("2) Claims & Severity Triage Pipeline (3-Step Assessment)")
-    print("3) Master Integrated Pipeline (Triage -> Supervisor -> Quality Auditor)")
+    print("3) Flowchart Architecture Pipeline (Intake -> Specialist -> Tier0/1 -> Escalation -> Execute)")
+    print("4) Code Review Team Pipeline (Developer + Code Auditor)")
+    print("5) Solution Review Team Pipeline (Specialist + Quality Auditor)")
+    print("6) Master Integrated Pipeline (Triage -> Supervisor -> Quality Auditor)")
 
     try:
-        choice = input("\nEnter selection [1-3] (default 3): ").strip() or "3"
+        choice = input("\nEnter selection [1-6] (default 6): ").strip() or "6"
         prompt = (
             input("Enter task prompt: ").strip()
             or "Build a Python function to sanitize user input and test it."
@@ -178,6 +316,12 @@ def main():
             run_supervisor_demo(prompt)
         elif choice == "2":
             run_claims_triage_demo(prompt)
+        elif choice == "3":
+            run_chart_pipeline_demo(prompt)
+        elif choice == "4":
+            run_code_review_demo(prompt)
+        elif choice == "5":
+            run_solution_review_demo(prompt)
         else:
             run_master_pipeline_demo(prompt)
     except KeyboardInterrupt:

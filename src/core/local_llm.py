@@ -33,7 +33,7 @@ class LocalLLMConfig(BaseModel):
         default_factory=lambda: os.getenv("OPENAI_MODEL_NAME", "Qwen-3.6-A3B-6bit")
     )
     api_key: Optional[str] = Field(
-        default_factory=lambda: os.getenv("OPENAI_API_KEY", "")
+        default_factory=lambda: os.getenv("OPENAI_API_KEY", "oMLXAPIKEY")
     )
     temperature: float = 0.2
     max_tokens: int = 1024
