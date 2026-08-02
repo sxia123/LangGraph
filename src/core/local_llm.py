@@ -63,9 +63,14 @@ class LocalLLMClient:
 
     def _get_openai_url(self, endpoint: str) -> str:
         base = self.config.base_url.rstrip("/")
+        for suffix in ["/chat/completions", "/chatcompletions", "/models", "/completions"]:
+            if base.endswith(suffix):
+                base = base[:-len(suffix)].rstrip("/")
+                break
         if base.endswith("/v1"):
             return f"{base}/{endpoint.lstrip('/')}"
         return f"{base}/v1/{endpoint.lstrip('/')}"
+
 
     def ping(self) -> Dict[str, Any]:
         if self.config.provider == "mock":
